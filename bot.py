@@ -36,15 +36,9 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODELS_LIST = [
     "deepseek/deepseek-chat:free",
     "meta-llama/llama-3.3-70b-instruct:free",
-    "qwen/qwen3-next-80b-a3b-instruct:free",
-    "openai/gpt-oss-20b:free"
+    "mistralai/mistral-small-24b-instruct-2501:free",
+    "microsoft/phi-3-medium-128k-instruct:free"
 ]
-
-SYSTEM_PROMPT = """
-Sen Hevora Nano'sun. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
-Her zaman Türkçe cevap ver.
-Kısa, doğal, profesyonel ve doğru konuş.
-"""
 
 MEMORY_FILE = "memory.json"
 CREDITS_FILE = "credits.json"
@@ -85,9 +79,16 @@ def ask_ai(chat_id, user_message):
         conversation_history[chat_id] = []
 
     history = conversation_history[chat_id]
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    
+    # System prompt yerine talimatı kullanıcı mesajının başına gizli bir ön ek olarak ekliyoruz (Modelin ekrana basmasını engeller)
+    formatted_message = (
+        "[Sistem Talimatı: Sen Hevora Nano'sun, Türkçe konuş, kısa ve profesyonel ol. Kendini tekrar tekrar tanıtma.]\n\n"
+        f"Kullanıcı Mesajı: {user_message}"
+    )
+
+    messages = []
     messages.extend(history)
-    messages.append({"role": "user", "content": user_message})
+    messages.append({"role": "user", "content": formatted_message})
 
     last_error = None
     answer = None
@@ -122,6 +123,7 @@ def ask_ai(chat_id, user_message):
     if not answer:
         raise Exception(f"Tüm modeller denendi fakat yanıt alınamadı. Son hata: {last_error}")
 
+    # Hafızaya sadece orijinal kullanıcı mesajını ve botun cevabını kaydediyoruz
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": answer})
 
@@ -151,7 +153,6 @@ async def credits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"💳 Kalan Kredi Miktarınız: **{current}**", parse_mode="Markdown")
 
 async def add_credit_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Admin komutu örn: /addcredit 123456789 50
     if len(context.args) < 2:
         await update.message.reply_text("Kullanım: /addcredit <user_id> <miktar>")
         return
@@ -195,7 +196,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         answer = ask_ai(update.effective_chat.id, text)
         parts, mode = format_response(answer)
         
-        # İnteraktif Butonlar: Sesli Dinle, Fotoğraf Oluştur, PDF Oluştur, Doğru/Yanlış
         keyboard = [
             [
                 InlineKeyboardButton("🔊 Sesli Dinle", callback_data="tts_play"),
@@ -290,7 +290,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "action_image":
         target_text = query.message.text or "Hevora AI"
-        prompt = target_text[:100] # Metinden görsel üretimi için kısa özet
+        prompt = target_text[:100]
         url = (
             "https://image.pollinations.ai/prompt/"
             + requests.utils.quote(prompt)
