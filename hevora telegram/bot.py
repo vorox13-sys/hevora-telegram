@@ -126,7 +126,7 @@ app = Flask(__name__)
 import os
 from telegram.ext import ApplicationBuilder
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "BURAYA_TOKEN_YAZ")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8950788943:AAFIM6325DaYMH9gSxuLOcFOaSk63PNb9vo")
 
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
