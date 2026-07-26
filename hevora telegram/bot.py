@@ -1,5 +1,7 @@
 import json
 import os
+import asyncio
+from flask import Flask, request
 import requests
 from telegram import Update
 from telegram.constants import ChatAction
@@ -10,12 +12,10 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-from telegram.request import HTTPXRequest  # PythonAnywhere Proxy için eklendi
 from services.formatter import format_response
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8950788943:AAGA4WbfJqH4WUnPIsLeflvamVUCAE8e_I0")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8950788943:AAFIM6325DaYMH9gSxuLOcFOaSk63PNb9vo")
 OPENROUTER_API_KEY = "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"
-
 MODEL = "openai/gpt-oss-20b:free"
 
 SYSTEM_PROMPT = """
@@ -34,27 +34,14 @@ else:
 
 def ask_ai(chat_id, user_message):
     chat_id = str(chat_id)
-
     if chat_id not in conversation_history:
         conversation_history[chat_id] = []
 
     history = conversation_history[chat_id]
-
-    messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT
-        }
-    ]
-
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
 
-    messages.append({
-        "role": "user",
-        "content": user_message
-    })
-
-    # PythonAnywhere dış API istekleri için proxy tanımı
     proxies = {
         "http": "http://proxy.server:3128",
         "https": "http://proxy.server:3128",
@@ -72,7 +59,7 @@ def ask_ai(chat_id, user_message):
             "temperature": 0.7,
             "max_tokens": 3000,
         },
-        proxies=proxies, # OpenRouter için proxy eklendi
+        proxies=proxies,
         timeout=120,
     )
 
@@ -80,22 +67,14 @@ def ask_ai(chat_id, user_message):
         raise Exception(response.text)
 
     data = response.json()
-
     answer = data["choices"][0]["message"]["content"]
 
-    history.append({
-        "role": "user",
-        "content": user_message
-    })
-
-    history.append({
-        "role": "assistant",
-        "content": answer
-    })
+    history.append({"role": "user", "content": user_message})
+    history.append({"role": "assistant", "content": answer})
 
     conversation_history[chat_id] = history[-20:]
     with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(conversation_history, f, ensure_ascii=False, indent=2)    
+        dump_data = json.dump(conversation_history, f, ensure_ascii=False, indent=2)
 
     return answer
 
@@ -110,11 +89,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
-
     if not prompt:
-        await update.message.reply_text(
-            "Kullanım:\n/image astronot kedi"
-        )
+        await update.message.reply_text("Kullanım:\n/image astronot kedi")
         return
 
     url = (
@@ -122,53 +98,40 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         + requests.utils.quote(prompt)
         + "?model=flux&width=1024&height=1024&nologo=true"
     )
-
     await update.message.reply_photo(photo=url)
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-
     await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id,
-        action=ChatAction.TYPING
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING
     )
-
     try:
         answer = ask_ai(update.effective_chat.id, text)
-
         parts, mode = format_response(answer)
-
         for part in parts:
             await update.message.reply_text(
-                part,
-                parse_mode=mode,
-                disable_web_page_preview=True,
+                part, parse_mode=mode, disable_web_page_preview=True
             )
-
     except Exception as e:
-        await update.message.reply_text(
-            f"❌ Hata:\n{e}"
-        )
+        await update.message.reply_text(f"❌ Hata:\n{e}")
 
-def main():
-    # Telegram API için PythonAnywhere Proxy Ayarı
-    request = HTTPXRequest(proxy="http://proxy.server:3128")
-    
-    app = Application.builder().token(BOT_TOKEN).request(request).build()
+# Application & Flask kurulumu
+ptb_app = Application.builder().token(BOT_TOKEN).build()
+ptb_app.add_handler(CommandHandler("start", start))
+ptb_app.add_handler(CommandHandler("image", image))
+ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("image", image))
+app = Flask(__name__)
 
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            chat
-        )
-    )
+# Webhook Endpoint'i
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    if request.method == "POST":
+        asyncio.run(ptb_app.initialize())
+        update = Update.de_json(request.get_json(force=True), ptb_app.bot)
+        asyncio.run(ptb_app.process_update(update))
+        return "ok", 200
 
-    print("✅ Hevora Nano Bot çalışıyor...")
-
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+@app.route("/")
+def index():
+    return "Hevora Nano Bot Aktif!", 200
