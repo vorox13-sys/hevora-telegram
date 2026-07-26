@@ -114,15 +114,22 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Hata:\n{e}")
 
+from telegram.request import HTTPXRequest
+
 def main():
-    # Uygulama ve komut tanımlamaları main içinde yapılıyor
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    # PythonAnywhere proxy ayarı
+    req = HTTPXRequest(
+        proxy_url="http://proxy.server:3128"
+    )
+
+    # Uygulamayı proxy ile başlatıyoruz
+    app = ApplicationBuilder().token(BOT_TOKEN).request(req).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("image", image))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    print("Bot polling modunda baslatiliyor...")
+    print("Bot polling modunda proxy ile baslatiliyor...")
     app.run_polling()
 
 if __name__ == '__main__':
