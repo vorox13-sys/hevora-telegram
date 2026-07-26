@@ -1,0 +1,84 @@
+{
+  "7460650818": [
+    {
+      "role": "user",
+      "content": "Merhaba"
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba! Nasılsınız?"
+    },
+    {
+      "role": "user",
+      "content": "Bana bir tablo yap"
+    },
+    {
+      "role": "assistant",
+      "content": "| Ürün | Fiyat | Stok |\n|------|-------|------|\n| Laptop | 7 200 TL | 15 |\n| Tablet | 3 500 TL | 22 |\n| Kulaklık | 950 TL   | 45 |\n| Monitör | 4 300 TL | 18 |"
+    },
+    {
+      "role": "user",
+      "content": "İngilizce yap"
+    },
+    {
+      "role": "assistant",
+      "content": "| Item      | Price (USD) | Stock |\n|-----------|-------------|-------|\n| Laptop    | 1,200       | 15    |\n| Tablet    | 550         | 22    |\n| Headphones| 120         | 45    |\n| Monitor   | 300         | 18    |"
+    },
+    {
+      "role": "user",
+      "content": "Merhaba yine oluştur"
+    },
+    {
+      "role": "assistant",
+      "content": "Tabii, işte başka bir rastgele tablo:\n\n| # | İsim   | Yaş | Şehir   | Meslek               |\n|---|--------|-----|---------|----------------------|\n| 1 | Can    | 32  | Bursa   | Finans Analisti      |\n| 2 | Lale   | 27  | Antalya | Blog Yazarı          |\n| 3 | Berk   | 45  | İzmir   | Makine Mühendisi     |\n| 4 | İrem   | 19  | Ankara  | Öğrenci              |\n| 5 | Özgür  | 38  | Adana   | Dijital Pazarlama Uzmanı |\n\nİhtiyacınıza göre satır veya sütun ekleyebilir, düzenleyebilirsiniz!"
+    },
+    {
+      "role": "user",
+      "content": "Tablo yap"
+    },
+    {
+      "role": "assistant",
+      "content": "| Şirket     | Çalışan Sayısı | Lokasyon   |\n|------------|----------------|------------|\n| TechNova   | 250            | İstanbul   |\n| GreenLeaf  | 80             | İzmir      |\n| DataWave   | 120            | Ankara     |\n| SoftBuild  | 95             | Bursa      |\n| AgroPlus   | 60             | Antalya    |"
+    },
+    {
+      "role": "user",
+      "content": "Tekrar yap"
+    },
+    {
+      "role": "assistant",
+      "content": "| Ürün Adı | Kategori | Fiyat (TL) | Stok Adedi |\n|----------|----------|-------------|------------|\n| Masaüstü Bilgisayar | Elektronik | 5 800 | 12 |\n| Kablosuz Kulaklık | Aksesuar | 1 200 | 35 |\n| Akıllı Saat | Giyilebilir | 2 300 | 18 |\n| Dizüstü Bilgisayar | Elektronik | 8 400 | 7 |\n| Tablet | Elektronik | 3 500 | 20 |"
+    },
+    {
+      "role": "user",
+      "content": "Tekrar yap"
+    },
+    {
+      "role": "assistant",
+      "content": "| Ürün    | Fiyat | Stok |\n|---------|-------|------|\n| Telefon | _vect | 30   |\n| Kulaklık| 1 150 | 45   |\n| Tablet  | 3 400 | 20   |"
+    },
+    {
+      "role": "user",
+      "content": "Tekrar yaZ"
+    },
+    {
+      "role": "assistant",
+      "content": "| Ürün          | Fiyat (TL) | Stok Adedi |\n|---------------|------------|------------|\n| Telefon       | 4 200      | 30         |\n| Kulaklık      | 1 150      | 45         |\n| Tablet        | 3 400      | 20         |"
+    },
+    {
+      "role": "user",
+      "content": "Tekrar yap"
+    },
+    {
+      "role": "assistant",
+      "content": "| Ürün      | Fiyat (TL) | Stok Adedi |\n|-----------|------------|------------|\n| Laptop    | 7 200      | 15         |\n| Tablet    | 3 500      | 22         |\n| Kulaklık  | 950        | 45         |\n| Monitör   | 4 300      | 18         |"
+    },
+    {
+      "role": "user",
+      "content": "┌──────────┬────────────┬────────────┐\n│   Ürün   │ Fiyat (TL) │ Stok Adedi │\n├──────────┼────────────┼────────────┤\n│ Laptop   │ 7 200      │ 15         │\n│ Tablet   │ 3 500      │ 22         │\n│ Kulaklık │ 950        │ 45         │\n│ Monitör  │ 4 300      │ 18         │\n└──────────┴────────────┴────────────┘"
+    },
+    {
+      "role": "assistant",
+      "content": "┌──────────┬────────────┬────────────┐  \n│   Ürün   │ Fiyat (TL) │ Stok Adedi │  \n├──────────┼────────────┼────────────┤  \n│ Laptop   │ 7 200      │ 15         │  \n│ Tablet   │ 3 500      │ 22         │  \n│ Kulaklık │ 950        │ 45         │  \n│ Monitör  │ 4 300      │ 18         │  \n└──────────┴────────────┴────────────┘"
+    }
+  ]
+}
