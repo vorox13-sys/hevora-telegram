@@ -123,15 +123,18 @@ ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
 app = Flask(__name__)
 
-# Webhook Endpoint'i
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    if request.method == "POST":
-        asyncio.run(ptb_app.initialize())
-        update = Update.de_json(request.get_json(force=True), ptb_app.bot)
-        asyncio.run(ptb_app.process_update(update))
-        return "ok", 200
+import os
+from telegram.ext import ApplicationBuilder
 
-@app.route("/")
-def index():
-    return "Hevora Nano Bot Aktif!", 200
+BOT_TOKEN = os.getenv("BOT_TOKEN", "BURAYA_TOKEN_YAZ")
+
+def main():
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    
+    # Handler'ların buraya ekli olmalı (örn: start, message vb.)
+    
+    print("Bot polling modunda baslatiliyor...")
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
