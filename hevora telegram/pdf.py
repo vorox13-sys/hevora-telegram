@@ -5,7 +5,7 @@ import requests
 PDF_MODELS = [
     os.getenv("MODEL", "qwen/qwen-2.5-72b-instruct"),
     "deepseek/deepseek-chat:free",
-    "google/gemini-2.5-flash:free"
+    "meta-llama/llama-3.3-70b-instruct:free"
 ]
 
 def extract_text_ring_pdf(pdf_path):
