@@ -33,9 +33,9 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = os.getenv("MODEL", "qwen/qwen-2.5-72b-instruct")
 
 SYSTEM_PROMPT = """
-Sen Hevora Nano'sun.
+Sen Hevora Nano'sun. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
 Her zaman Türkçe cevap ver.
-Kısa, doğal ve doğru konuş.
+Kısa, doğal, profesyonel ve doğru konuş.
 """
 
 MEMORY_FILE = "memory.json"
@@ -89,10 +89,11 @@ def ask_ai(chat_id, user_message):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Merhaba!\n\n"
-        "Ben Hevora Nano.\n"
+        "Ben **Hevora Nano**, **Hevora Labs** tarafından geliştirildim.\n"
         "Bana istediğini sorabilirsin.\n\n"
         "🖼 Görsel oluşturmak için:\n"
-        "/image kırmızı spor araba"
+        "/image kırmızı spor araba",
+        parse_mode="Markdown"
     )
 
 async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,41 +123,38 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         for i, part in enumerate(parts):
-            # Son parçaya veya tek parçaya ses butonunu ekle
             markup = reply_markup if i == len(parts) - 1 else None
             await update.message.reply_text(
                 part, parse_mode=mode, disable_web_page_preview=True, reply_markup=markup
             )
     except Exception as e:
-        await update.message.reply_text(f"❌ Hata:\n{e}")
+        print(f"Arka plan hatası (Gizlenen Log): {e}")
+        await update.message.reply_text("⚠️ Şu anda yapay zeka servislerinde geçici bir yoğunluk var. Lütfen birkaç saniye sonra tekrar dene.")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     if query.data == "tts_play":
-        text_to_speak = query.message.text or "Sesli yanıt."
+        target_text = query.message.text or "Sesli yanıt."
         
-        # Geçici ses dosyası oluştur ve gönder
-        audio_file = await text_to_speech(text_to_speak)
+        audio_file = await text_to_speech(target_text)
         
         if audio_file and os.path.exists(audio_file):
             with open(audio_file, "rb") as voice:
                 await context.bot.send_voice(chat_id=query.message.chat_id, voice=voice)
             os.remove(audio_file)
         else:
-            await context.bot.send_message(chat_id=query.message.chat_id, text="Ses oluşturulamadı.")
+            await query.edit_message_text("Ses oluşturulurken bir hata oluştu.")
 
 def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN çevre değişkeni bulunamadı!")
 
-    # Flask'ı arka planda (ayrı bir thread'de) çalıştırıyoruz
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Telegram botunu başlatıyoruz
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CallbackQueryHandler(button_handler))
