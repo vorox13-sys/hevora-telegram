@@ -15,7 +15,7 @@ from services.formatter import format_response
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8950788943:AAFIM6325DaYMH9gSxuLOcFOaSk63PNb9vo")
 OPENROUTER_API_KEY = "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"
-MODEL = "openai/gpt-oss-20b:free"
+MODEL = "qwen/qwen-2.5-72b-instruct"
 
 SYSTEM_PROMPT = """
 Sen Hevora Nano'sun.
