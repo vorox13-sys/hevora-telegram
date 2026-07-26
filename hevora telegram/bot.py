@@ -1,18 +1,19 @@
+import json
+import os
 import requests
 from telegram import Update
 from telegram.constants import ChatAction
-from services.formatter import format_response
 from telegram.ext import (
     Application,
     CommandHandler,
-    MessageHandler,
     ContextTypes,
+    MessageHandler,
     filters,
 )
-import json
-import os
+from telegram.request import HTTPXRequest  # PythonAnywhere Proxy için eklendi
+from services.formatter import format_response
 
-BOT_TOKEN = "8950788943:AAGA4WbfJqH4WUnPIsLeflvamVUCAE8e_I0"
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8950788943:AAGA4WbfJqH4WUnPIsLeflvamVUCAE8e_I0")
 OPENROUTER_API_KEY = "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"
 
 MODEL = "openai/gpt-oss-20b:free"
@@ -53,6 +54,12 @@ def ask_ai(chat_id, user_message):
         "content": user_message
     })
 
+    # PythonAnywhere dış API istekleri için proxy tanımı
+    proxies = {
+        "http": "http://proxy.server:3128",
+        "https": "http://proxy.server:3128",
+    }
+
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={
@@ -65,6 +72,7 @@ def ask_ai(chat_id, user_message):
             "temperature": 0.7,
             "max_tokens": 3000,
         },
+        proxies=proxies, # OpenRouter için proxy eklendi
         timeout=120,
     )
 
@@ -100,7 +108,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/image kırmızı spor araba"
     )
 
-
 async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
 
@@ -118,18 +125,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_photo(photo=url)
 
-
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    text = update.message.text
-
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id,
-        action=ChatAction.TYPING
-    )
-
-async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     text = update.message.text
 
     await context.bot.send_chat_action(
@@ -153,8 +149,12 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"❌ Hata:\n{e}"
         )
+
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    # Telegram API için PythonAnywhere Proxy Ayarı
+    request = HTTPXRequest(proxy="http://proxy.server:3128")
+    
+    app = Application.builder().token(BOT_TOKEN).request(request).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("image", image))
@@ -169,7 +169,6 @@ def main():
     print("✅ Hevora Nano Bot çalışıyor...")
 
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
