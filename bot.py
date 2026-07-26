@@ -22,12 +22,10 @@ from google import genai
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL") # Render otomatik sağlar
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
 
 # --- FLASK SUNUCU VE WEBHOOK ---
 web_app = Flask(__name__)
-
-# Telegram Application nesnesini global tanımlıyoruz
 telegram_app = None
 
 @web_app.route('/')
@@ -37,15 +35,18 @@ def home():
 @web_app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook_handler():
     if telegram_app:
-        update_data = flask_request.get_json(force=True)
-        update = Update.de_json(update_data, telegram_app.bot)
-        
-        async def process():
-            async with telegram_app:
-                await telegram_app.process_update(update)
-                
-        import asyncio
-        asyncio.run(process())
+        try:
+            update_data = flask_request.get_json(force=True)
+            update = Update.de_json(update_data, telegram_app.bot)
+            
+            async def process():
+                async with telegram_app:
+                    await telegram_app.process_update(update)
+                    
+            import asyncio
+            asyncio.run(process())
+        except Exception as e:
+            print(f"Webhook işleme hatası: {e}")
     return "ok", 200
 
 def run_flask():
@@ -65,7 +66,7 @@ MODELS_LIST = [
 ]
 
 SYSTEM_PROMPT = """
-Hevora Nano. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
+Sen Hevora Nano'sun. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
 Her zaman Türkçe cevap ver.
 Kısa, doğal, profesyonel ve doğru konuş.
 """
@@ -362,7 +363,6 @@ def main():
     telegram_app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    # Webhook'u Telegram'a bildir ve uygulama başlatma işlemlerini tamamla
     if RENDER_EXTERNAL_URL:
         webhook_url = f"{RENDER_EXTERNAL_URL.strip('/')}/{BOT_TOKEN}"
         import asyncio
@@ -372,7 +372,6 @@ def main():
         asyncio.run(setup_webhook())
         print(f"Webhook ayarlandı ve uygulama başlatıldı: {webhook_url}")
 
-    # Flask sunucusunu arka planda başlatıyoruz
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
@@ -380,6 +379,6 @@ def main():
     import time
     while True:
         time.sleep(1)
-        
+
 if __name__ == '__main__':
     main()
