@@ -14,7 +14,7 @@ from telegram.ext import (
 from services.formatter import format_response
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8950788943:AAFIM6325DaYMH9gSxuLOcFOaSk63PNb9vo")
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
 MODEL = "qwen/qwen-2.5-72b-instruct"
 
 SYSTEM_PROMPT = """
@@ -41,11 +41,7 @@ def ask_ai(chat_id, user_message):
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
-    proxies = {
-        "http": "http://proxy.server:3128",
-        "https": "http://proxy.server:3128",
-    }
-
+    # Render üzerinde proxy kullanılmaz! Doğrudan istek atıyoruz.
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={
@@ -58,8 +54,7 @@ def ask_ai(chat_id, user_message):
             "temperature": 0.7,
             "max_tokens": 3000,
         },
-        proxies=proxies,
-        timeout=120,
+        timeout=60,
     )
 
     if response.status_code != 200:
@@ -114,17 +109,14 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Hata:\n{e}")
 
-from telegram.request import HTTPXRequest
-
 def main():
-    # PythonAnywhere proxy ayarı
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("image", image))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    print("Bot polling modunda proxy ile baslatiliyor...")
+    print("Bot polling modunda baslatiliyor...")
     app.run_polling()
 
 if __name__ == '__main__':
