@@ -33,7 +33,6 @@ def run_flask():
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# Yoğunluk durumunda sırayla denenecek yedekli model listesi
 MODELS_LIST = [
     os.getenv("MODEL", "qwen/qwen-2.5-72b-instruct"),
     "deepseek/deepseek-chat:free",
@@ -48,12 +47,37 @@ Kısa, doğal, profesyonel ve doğru konuş.
 """
 
 MEMORY_FILE = "memory.json"
+CREDITS_FILE = "credits.json"
+INITIAL_CREDITS = 50  # Yeni kullanıcılara başlangıç kredisi
 
+# Hafıza ve Kredi Yükleme
 if os.path.exists(MEMORY_FILE):
     with open(MEMORY_FILE, "r", encoding="utf-8") as f:
         conversation_history = json.load(f)
 else:
     conversation_history = {}
+
+if os.path.exists(CREDITS_FILE):
+    with open(CREDITS_FILE, "r", encoding="utf-8") as f:
+        user_credits = json.load(f)
+else:
+    user_credits = {}
+
+def save_credits():
+    with open(CREDITS_FILE, "w", encoding="utf-8") as f:
+        json.dump(user_credits, f, ensure_ascii=False, indent=2)
+
+def check_and_use_credit(user_id):
+    user_id = str(user_id)
+    if user_id not in user_credits:
+        user_credits[user_id] = INITIAL_CREDITS
+    
+    if user_credits[user_id] <= 0:
+        return False
+    
+    user_credits[user_id] -= 1
+    save_credits()
+    return True
 
 def ask_ai(chat_id, user_message):
     chat_id = str(chat_id)
@@ -68,7 +92,6 @@ def ask_ai(chat_id, user_message):
     last_error = None
     answer = None
 
-    # Modelleri sırayla dener, biri patlarsa diğerine geçer
     for model in MODELS_LIST:
         try:
             response = requests.post(
@@ -89,7 +112,7 @@ def ask_ai(chat_id, user_message):
             if response.status_code == 200:
                 data = response.json()
                 answer = data["choices"][0]["message"]["content"]
-                break # Başarılı olursa döngüden çık
+                break
             else:
                 last_error = response.text
         except Exception as e:
@@ -109,14 +132,40 @@ def ask_ai(chat_id, user_message):
     return answer
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    if user_id not in user_credits:
+        user_credits[user_id] = INITIAL_CREDITS
+        save_credits()
+
     await update.message.reply_text(
-        "👋 Merhaba!\n\n"
-        "Ben **Hevora Nano**, **Hevora Labs** tarafından geliştirildim.\n"
-        "Bana metin, görsel veya PDF dosyası gönderebilirsin.\n\n"
-        "🖼 Görsel üretmek için:\n"
-        "/image kırmızı spor araba",
+        f"👋 Merhaba!\n\n"
+        f"Ben **Hevora Nano**, **Hevora Labs** tarafından geliştirildim.\n"
+        f"💳 Kalan Krediniz: **{user_credits[user_id]}**\n\n"
+        "Bana metin, görsel veya PDF dosyası gönderebilirsin.",
         parse_mode="Markdown"
     )
+
+async def credits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    current = user_credits.get(user_id, INITIAL_CREDITS)
+    await update.message.reply_text(f"💳 Kalan Kredi Miktarınız: **{current}**", parse_mode="Markdown")
+
+async def add_credit_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Admin komutu örn: /addcredit 123456789 50
+    if len(context.args) < 2:
+        await update.message.reply_text("Kullanım: /addcredit <user_id> <miktar>")
+        return
+    
+    target_user = context.args[0]
+    try:
+        amount = int(context.args[1])
+        if target_user not in user_credits:
+            user_credits[target_user] = INITIAL_CREDITS
+        user_credits[target_user] += amount
+        save_credits()
+        await update.message.reply_text(f"✅ Başarılı! {target_user} ID'li kullanıcıya {amount} kredi eklendi. Yeni bakiye: {user_credits[target_user]}")
+    except ValueError:
+        await update.message.reply_text("⚠️ Miktar sayısal olmalıdır.")
 
 async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
@@ -132,6 +181,12 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_photo(photo=url)
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not check_and_use_credit(user_id):
+        await update.message.reply_text("⚠️ Krediniz tükenmiştir! Mesaj göndermek için krediye ihtiyacınız var.")
+        return
+
     text = update.message.text
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id, action=ChatAction.TYPING
@@ -140,7 +195,18 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         answer = ask_ai(update.effective_chat.id, text)
         parts, mode = format_response(answer)
         
-        keyboard = [[InlineKeyboardButton("🔊 Sesli Dinle", callback_data="tts_play")]]
+        # İnteraktif Butonlar: Sesli Dinle, Fotoğraf Oluştur, PDF Oluştur, Doğru/Yanlış
+        keyboard = [
+            [
+                InlineKeyboardButton("🔊 Sesli Dinle", callback_data="tts_play"),
+                InlineKeyboardButton("🖼 Fotoğraf Oluştur", callback_data="action_image")
+            ],
+            [
+                InlineKeyboardButton("📄 PDF Oluştur", callback_data="action_pdf"),
+                InlineKeyboardButton("👍 Doğru", callback_data="feedback_true"),
+                InlineKeyboardButton("👎 Yanlış", callback_data="feedback_false")
+            ]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         for i, part in enumerate(parts):
@@ -149,10 +215,15 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 part, parse_mode=mode, disable_web_page_preview=True, reply_markup=markup
             )
     except Exception as e:
-        print(f"Arka plan hatası (Gizlenen Log): {e}")
-        await update.message.reply_text("⚠️ Şu anda yapay zeka servislerinde geçici bir yoğunluk var. Lütfen birkaç saniye sonra tekrar dene.")
+        print(f"Arka plan hatası: {e}")
+        await update.message.reply_text("⚠️ Yapay zeka servislerinde geçici bir yoğunluk oluştu, lütfen tekrar deneyin.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not check_and_use_credit(user_id):
+        await update.message.reply_text("⚠️ Krediniz tükenmiştir!")
+        return
+
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
     file_path = "temp_image.jpg"
@@ -174,6 +245,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(file_path)
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not check_and_use_credit(user_id):
+        await update.message.reply_text("⚠️ Krediniz tükenmiştir!")
+        return
+
     document = update.message.document
     if not document.file_name.lower().endswith('.pdf'):
         await update.message.reply_text("Şimdilik sadece PDF dosyalarını analiz edebiliyorum.")
@@ -200,16 +276,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == "tts_play":
+    data = query.data
+
+    if data == "tts_play":
         target_text = query.message.text or "Sesli yanıt."
         audio_file = await text_to_speech(target_text)
-        
         if audio_file and os.path.exists(audio_file):
             with open(audio_file, "rb") as voice:
                 await context.bot.send_voice(chat_id=query.message.chat_id, voice=voice)
             os.remove(audio_file)
         else:
-            await query.edit_message_text("Ses oluşturulurken bir hata oluştu.")
+            await query.edit_message_text("Ses oluşturulurken hata oluştu.")
+
+    elif data == "action_image":
+        target_text = query.message.text or "Hevora AI"
+        prompt = target_text[:100] # Metinden görsel üretimi için kısa özet
+        url = (
+            "https://image.pollinations.ai/prompt/"
+            + requests.utils.quote(prompt)
+            + "?model=flux&width=1024&height=1024&nologo=true"
+        )
+        await context.bot.send_photo(chat_id=query.message.chat_id, photo=url, caption="🎨 Mesajınızdan üretilen görsel.")
+
+    elif data == "action_pdf":
+        target_text = query.message.text or "Rapor"
+        pdf_filename = "hevora_rapor.txt"
+        with open(pdf_filename, "w", encoding="utf-8") as f:
+            f.write(target_text)
+        with open(pdf_filename, "rb") as doc:
+            await context.bot.send_document(chat_id=query.message.chat_id, document=doc, filename="Hevora_Yanit.txt")
+        if os.path.exists(pdf_filename):
+            os.remove(pdf_filename)
+
+    elif data == "feedback_true":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="❤️ Geri bildiriminiz için teşekkürler! Doğru bulunduğunuz için mutlu olduk.")
+
+    elif data == "feedback_false":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await context.bot.send_message(chat_id=query.message.chat_id, text="🛠 Geri bildiriminiz alındı, daha iyi yanıtlar için kendimizi geliştiriyoruz.")
 
 def main():
     if not BOT_TOKEN:
@@ -223,6 +328,8 @@ def main():
 
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("credits", credits_command))
+    app.add_handler(CommandHandler("addcredit", add_credit_admin))
     app.add_handler(CommandHandler("image", image))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
