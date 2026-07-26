@@ -4,3 +4,4 @@ wcwidth
 flask
 edge-tts
 pypdf
+google-genai
