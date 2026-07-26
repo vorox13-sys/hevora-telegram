@@ -1,8 +1,6 @@
 import json
 import os
-import threading
 import requests
-from flask import Flask, request as flask_request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -22,37 +20,6 @@ from google import genai
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
-
-# --- FLASK SUNUCU VE WEBHOOK ---
-web_app = Flask(__name__)
-telegram_app = None
-
-@web_app.route('/')
-def home():
-    return "Hevora Nano Bot aktif ve Webhook modunda çalışıyor! 🚀"
-
-@web_app.route(f'/{BOT_TOKEN}', methods=['POST'])
-def webhook_handler():
-    if telegram_app:
-        try:
-            update_data = flask_request.get_json(force=True)
-            update = Update.de_json(update_data, telegram_app.bot)
-            
-            async def process():
-                async with telegram_app:
-                    await telegram_app.process_update(update)
-                    
-            import asyncio
-            asyncio.run(process())
-        except Exception as e:
-            print(f"Webhook işleme hatası: {e}")
-    return "ok", 200
-
-def run_flask():
-    port = int(os.getenv("PORT", 10000))
-    web_app.run(host="0.0.0.0", port=port)
-# -------------------------
 
 gemini_client = None
 if GEMINI_API_KEY:
@@ -348,37 +315,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=query.message.chat_id, text="🛠 Geri bildiriminiz alındı.")
 
 def main():
-    global telegram_app
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN çevre değişkeni bulunamadı!")
 
-    telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    telegram_app.add_handler(CallbackQueryHandler(button_handler))
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(CommandHandler("credits", credits_command))
-    telegram_app.add_handler(CommandHandler("addcredit", add_credit_admin))
-    telegram_app.add_handler(CommandHandler("image", image))
-    telegram_app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    telegram_app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("credits", credits_command))
+    app.add_handler(CommandHandler("addcredit", add_credit_admin))
+    app.add_handler(CommandHandler("image", image))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    if RENDER_EXTERNAL_URL:
-        webhook_url = f"{RENDER_EXTERNAL_URL.strip('/')}/{BOT_TOKEN}"
-        import asyncio
-        async def setup_webhook():
-            await telegram_app.initialize()
-            await telegram_app.bot.set_webhook(url=webhook_url)
-        asyncio.run(setup_webhook())
-        print(f"Webhook ayarlandı ve uygulama başlatıldı: {webhook_url}")
-
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-
-    import time
-    while True:
-        time.sleep(1)
+    print("Bot Long Polling modunda başlatılıyor...")
+    app.run_polling()
 
 if __name__ == '__main__':
     main()
