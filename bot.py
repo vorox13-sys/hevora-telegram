@@ -351,38 +351,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=query.message.chat_id, text="🛠 Geri bildiriminiz alındı.")
 
 def main():
-    global telegram_app
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN çevre değişkeni bulunamadı!")
 
-    telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    telegram_app.add_handler(CallbackQueryHandler(button_handler))
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(CommandHandler("credits", credits_command))
-    telegram_app.add_handler(CommandHandler("addcredit", add_credit_admin))
-    telegram_app.add_handler(CommandHandler("image", image))
-    telegram_app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    telegram_app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-
-    if RENDER_EXTERNAL_URL:
-        webhook_url = f"{RENDER_EXTERNAL_URL.strip('/')}/{BOT_TOKEN}"
-        import asyncio
-        async def setup_webhook():
-            await telegram_app.initialize()
-            await telegram_app.bot.set_webhook(url=webhook_url)
-        asyncio.run(setup_webhook())
-        print(f"Webhook aktif: {webhook_url}")
-
-    # Render port beklentisini karşılamak için Flask sunucusunu başlatıyoruz
+    # Flask'ı arka planda hayatta tutmak için (Render port kontrolü yapsın diye)
+    import threading
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    import time
-    while True:
-        time.sleep(1)
+    # Telegram botunu standart, hatasız polling modunda başlatıyoruz
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("credits", credits_command))
+    application.add_handler(CommandHandler("addcredit", add_credit_admin))
+    application.add_handler(CommandHandler("image", image))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+
+    print("Bot polling modunda başlatılıyor...")
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
