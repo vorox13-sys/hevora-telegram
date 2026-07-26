@@ -5,6 +5,7 @@ import requests
 from flask import Flask
 from telegram import Update
 from telegram.constants import ChatAction
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -142,3 +143,12 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+async def send_ai_response(update, context, text):
+    # Seslendirme için callback_data ekliyoruz (metni kısaltarak veya ID ile tutabiliriz)
+    keyboard = [
+        [InlineKeyboardButton("🔊 Sesli Dinle", callback_data="tts_play")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
