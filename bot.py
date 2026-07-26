@@ -1,8 +1,9 @@
 import json
 import os
 import threading
+import time
 import requests
-from flask import Flask, request as flask_request
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -20,50 +21,30 @@ from pdf import analyze_pdf
 from google import genai
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# --- FLASK VE WEBHOOK AYARLARI ---
+MODELS_LIST = [
+    "deepseek/deepseek-chat",
+    "qwen/qwen-2.5-72b-instruct",
+    "google/gemini-2.0-flash-exp:free"
+]
+
+# --- FLASK WEB SERVER (Render Port Kontrolü İçin) ---
 web_app = Flask(__name__)
-telegram_app = None
 
 @web_app.route('/')
 def home():
     return "Hevora Nano Bot aktif ve çalışıyor! 🚀"
 
-@web_app.route(f'/{BOT_TOKEN}', methods=['POST'])
-def webhook_handler():
-    if telegram_app:
-        try:
-            update_data = flask_request.get_json(force=True)
-            update = Update.de_json(update_data, telegram_app.bot)
-            
-            async def process():
-                async with telegram_app:
-                    await telegram_app.process_update(update)
-                    
-            import asyncio
-            asyncio.run(process())
-        except Exception as e:
-            print(f"Webhook işleme hatası: {e}")
-    return "ok", 200
-
 def run_flask():
     port = int(os.getenv("PORT", 10000))
     web_app.run(host="0.0.0.0", port=port)
-# ---------------------------------
+# ----------------------------------------------------
 
 gemini_client = None
 if GEMINI_API_KEY:
     gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-
-MODELS_LIST = [
-    "deepseek/deepseek-chat:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "mistralai/mistral-small-24b-instruct-2501:free",
-    "microsoft/phi-3-medium-128k-instruct:free"
-]
 
 SYSTEM_PROMPT = """
 Sen Hevora Nano'sun. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
@@ -112,25 +93,28 @@ def ask_ai(chat_id, user_message):
     answer = None
     last_error = None
 
-    # 1. ÖNCE GEMİNİ DENENİR (Ana Sağlayıcı)
+    # 1. ÖNCE GEMİNİ DENENİR (Otomatik tekrar deneme mekanizmasıyla)
     if gemini_client:
-        try:
-            full_prompt = f"Sistem Talimatı: {SYSTEM_PROMPT}\n\n"
-            for h in history:
-                role = "Kullanıcı" if h["role"] == "user" else "Asistan"
-                full_prompt += f"{role}: {h['content']}\n"
-            full_prompt += f"Kullanıcı: {user_message}"
+        for attempt in range(2):
+            try:
+                full_prompt = f"Sistem Talimatı: {SYSTEM_PROMPT}\n\n"
+                for h in history:
+                    role = "Kullanıcı" if h["role"] == "user" else "Asistan"
+                    full_prompt += f"{role}: {h['content']}\n"
+                full_prompt += f"Kullanıcı: {user_message}"
 
-            gemini_response = gemini_client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=full_prompt
-            )
-            if gemini_response and gemini_response.text:
-                answer = gemini_response.text
-        except Exception as gemini_err:
-            last_error = f"Gemini Hatası: {str(gemini_err)}"
+                gemini_response = gemini_client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=full_prompt
+                )
+                if gemini_response and gemini_response.text:
+                    answer = gemini_response.text
+                    break
+            except Exception as gemini_err:
+                last_error = f"Gemini Hatası: {str(gemini_err)}"
+                time.sleep(1)
 
-    # 2. GEMİNİ BAŞARISIZ OLURSA OPENROUTER MODELLERİ YEDEK OLARAK DEVREYE GİRER
+    # 2. GEMİNİ YANIT VEREMEZSE OPENROUTER MODELLERİ YEDEK OLARAK DEVREYE GİRER
     if not answer and OPENROUTER_API_KEY:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         messages.extend(history)
@@ -150,7 +134,7 @@ def ask_ai(chat_id, user_message):
                         "temperature": 0.7,
                         "max_tokens": 2000,
                     },
-                    timeout=45,
+                    timeout=30,
                 )
 
                 if response.status_code == 200:
@@ -164,7 +148,7 @@ def ask_ai(chat_id, user_message):
                 continue
 
     if not answer:
-        raise Exception(f"Tüm servisler yanıt vermedi. Son hata: {last_error}")
+        raise Exception(f"Tüm servisler yoğun. Son hata: {last_error}")
 
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": answer})
@@ -255,7 +239,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         print(f"Arka plan hatası: {e}")
-        await update.message.reply_text("⚠️ Servislerde geçici bir yoğunluk oluştu, lütfen tekrar deneyin.")
+        await update.message.reply_text("⚠️ Servis yanıt verirken yoğunluk oluştu, lütfen tekrar deneyin.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -354,13 +338,12 @@ def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN çevre değişkeni bulunamadı!")
 
-    # Flask'ı arka planda hayatta tutmak için (Render port kontrolü yapsın diye)
-    import threading
+    # Flask sunucusunu arka planda başlat (Render port kontrolü için zorunlu)
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Telegram botunu standart, hatasız polling modunda başlatıyoruz
+    # Telegram botunu standart ve hatasız Polling modunda başlatıyoruz
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     application.add_handler(CallbackQueryHandler(button_handler))
