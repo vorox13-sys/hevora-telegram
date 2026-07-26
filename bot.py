@@ -18,7 +18,7 @@ from voice import text_to_speech
 from image import analyze_image
 from pdf import analyze_pdf
 
-# --- FLASK MINI SUNUCU (Render'ı uyutmama trick'i) ---
+# --- FLASK MINI SUNUCU ---
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -28,7 +28,7 @@ def home():
 def run_flask():
     port = int(os.getenv("PORT", 10000))
     web_app.run(host="0.0.0.0", port=port)
-# ----------------------------------------------------
+# -------------------------
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -92,8 +92,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Merhaba!\n\n"
         "Ben **Hevora Nano**, **Hevora Labs** tarafından geliştirildim.\n"
-        "Bana istediğini sorabilirsin.\n\n"
-        "🖼 Görsel oluşturmak için:\n"
+        "Bana metin, görsel veya PDF dosyası gönderebilirsin.\n\n"
+        "🖼 Görsel üretmek için:\n"
         "/image kırmızı spor araba",
         parse_mode="Markdown"
     )
@@ -120,7 +120,6 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         answer = ask_ai(update.effective_chat.id, text)
         parts, mode = format_response(answer)
         
-        # Seslendirme butonu hazırlığı
         keyboard = [[InlineKeyboardButton("🔊 Sesli Dinle", callback_data="tts_play")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -133,13 +132,56 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Arka plan hatası (Gizlenen Log): {e}")
         await update.message.reply_text("⚠️ Şu anda yapay zeka servislerinde geçici bir yoğunluk var. Lütfen birkaç saniye sonra tekrar dene.")
 
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo = update.message.photo[-1]
+    file = await context.bot.get_file(photo.file_id)
+    file_path = "temp_image.jpg"
+    await file.download_to_drive(file_path)
+
+    caption = update.message.caption or "Bu görseli açıkla."
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    
+    try:
+        result = analyze_image(file_path, caption)
+        parts, mode = format_response(result)
+        for part in parts:
+            await update.message.reply_text(part, parse_mode=mode)
+    except Exception as e:
+        print(f"Görsel analiz hatası: {e}")
+        await update.message.reply_text("⚠️ Görsel analiz edilirken bir hata oluştu.")
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    document = update.message.document
+    if not document.file_name.lower().endswith('.pdf'):
+        await update.message.reply_text("Şimdilik sadece PDF dosyalarını analiz edebiliyorum.")
+        return
+
+    file = await context.bot.get_file(document.file_id)
+    file_path = "temp_doc.pdf"
+    await file.download_to_drive(file_path)
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    try:
+        result = analyze_pdf(file_path)
+        parts, mode = format_response(result)
+        for part in parts:
+            await update.message.reply_text(part, parse_mode=mode)
+    except Exception as e:
+        print(f"PDF analiz hatası: {e}")
+        await update.message.reply_text("⚠️ PDF okunurken bir hata oluştu.")
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     if query.data == "tts_play":
         target_text = query.message.text or "Sesli yanıt."
-        
         audio_file = await text_to_speech(target_text)
         
         if audio_file and os.path.exists(audio_file):
@@ -162,52 +204,12 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("image", image))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
     print("Bot polling modunda ve web sunucu ile baslatiliyor...")
     app.run_polling()
 
 if __name__ == '__main__':
     main()
-
-# Görsel mesajlarını yakalamak için handler:
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    photo = update.message.photo[-1] # En yüksek çözünürlüklü foto
-    file = await context.bot.get_file(photo.file_id)
-    file_path = "temp_image.jpg"
-    await file.download_to_drive(file_path)
-
-    caption = update.message.caption or "Bu görseli açıkla."
-    await update.message.reply_text("🔍 Görsel analiz ediliyor...")
-    
-    try:
-        result = analyze_image(file_path, caption)
-        await update.message.reply_text(result)
-    except Exception as e:
-        await update.message.reply_text("⚠️ Görsel analiz edilirken bir hata oluştu.")
-    finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-
-# PDF belgelerini yakalamak için handler:
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    document = update.message.document
-    if not document.file_name.endswith('.pdf'):
-        await update.message.reply_text("Şimdilik sadece PDF dosyalarını analiz edebiliyorum.")
-        return
-
-    file = await context.bot.get_file(document.file_id)
-    file_path = "temp_doc.pdf"
-    await file.download_to_drive(file_path)
-
-    await update.message.reply_text("📄 PDF okunuyor ve analiz ediliyor...")
-    try:
-        result = analyze_pdf(file_path)
-        await update.message.reply_text(result)
-    except Exception as e:
-        await update.message.reply_text("⚠️ PDF okunurken bir hata oluştu.")
-    finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
