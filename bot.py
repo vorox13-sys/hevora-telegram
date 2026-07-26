@@ -40,9 +40,15 @@ MODELS_LIST = [
     "microsoft/phi-3-medium-128k-instruct:free"
 ]
 
+SYSTEM_PROMPT = """
+Hevora Nano. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
+Her zaman Türkçe cevap ver.
+Kısa, doğal, profesyonel ve doğru konuş.
+"""
+
 MEMORY_FILE = "memory.json"
 CREDITS_FILE = "credits.json"
-INITIAL_CREDITS = 50  # Yeni kullanıcılara başlangıç kredisi
+INITIAL_CREDITS = 50
 
 # Hafıza ve Kredi Yükleme
 if os.path.exists(MEMORY_FILE):
@@ -79,16 +85,9 @@ def ask_ai(chat_id, user_message):
         conversation_history[chat_id] = []
 
     history = conversation_history[chat_id]
-    
-    # System prompt yerine talimatı kullanıcı mesajının başına gizli bir ön ek olarak ekliyoruz (Modelin ekrana basmasını engeller)
-    formatted_message = (
-        "[Sistem Talimatı: Sen Hevora Nano'sun, Türkçe konuş, kısa ve profesyonel ol. Kendini tekrar tekrar tanıtma.]\n\n"
-        f"Kullanıcı Mesajı: {user_message}"
-    )
-
-    messages = []
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.extend(history)
-    messages.append({"role": "user", "content": formatted_message})
+    messages.append({"role": "user", "content": user_message})
 
     last_error = None
     answer = None
@@ -123,7 +122,6 @@ def ask_ai(chat_id, user_message):
     if not answer:
         raise Exception(f"Tüm modeller denendi fakat yanıt alınamadı. Son hata: {last_error}")
 
-    # Hafızaya sadece orijinal kullanıcı mesajını ve botun cevabını kaydediyoruz
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": answer})
 
