@@ -39,9 +39,13 @@ def webhook_handler():
     if telegram_app:
         update_data = flask_request.get_json(force=True)
         update = Update.de_json(update_data, telegram_app.bot)
-        # Asenkron süreci Flask içinde tetikliyoruz
+        
+        async def process():
+            async with telegram_app:
+                await telegram_app.process_update(update)
+                
         import asyncio
-        asyncio.run(telegram_app.process_update(update))
+        asyncio.run(process())
     return "ok", 200
 
 def run_flask():
@@ -358,24 +362,24 @@ def main():
     telegram_app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    # Webhook'u Telegram'a otomatik bildir
+    # Webhook'u Telegram'a bildir ve uygulama başlatma işlemlerini tamamla
     if RENDER_EXTERNAL_URL:
         webhook_url = f"{RENDER_EXTERNAL_URL.strip('/')}/{BOT_TOKEN}"
         import asyncio
-        async def set_wh():
+        async def setup_webhook():
+            await telegram_app.initialize()
             await telegram_app.bot.set_webhook(url=webhook_url)
-        asyncio.run(set_wh())
-        print(f"Webhook ayarlandı: {webhook_url}")
+        asyncio.run(setup_webhook())
+        print(f"Webhook ayarlandı ve uygulama başlatıldı: {webhook_url}")
 
     # Flask sunucusunu arka planda başlatıyoruz
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Artık run_polling kullanılmıyor, Flask sunucusu istekleri karşılayacak
     import time
     while True:
         time.sleep(1)
-
+        
 if __name__ == '__main__':
     main()
