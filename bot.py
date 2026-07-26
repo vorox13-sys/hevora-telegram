@@ -34,10 +34,10 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 MODELS_LIST = [
-    os.getenv("MODEL", "qwen/qwen-2.5-72b-instruct"),
     "deepseek/deepseek-chat:free",
     "meta-llama/llama-3.3-70b-instruct:free",
-    "mistralai/mistral-large-2411:free"
+    "qwen/qwen3-next-80b-a3b-instruct:free",
+    "openai/gpt-oss-20b:free"
 ]
 
 SYSTEM_PROMPT = """
