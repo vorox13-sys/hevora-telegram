@@ -17,6 +17,7 @@ from services.formatter import format_response
 from voice import text_to_speech
 from image import analyze_image
 from pdf import analyze_pdf
+from google import genai  # Resmi Google GenAI SDK
 
 # --- FLASK MINI SUNUCU ---
 web_app = Flask(__name__)
@@ -32,6 +33,12 @@ def run_flask():
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Google GenAI İstemcisini Başlatıyoruz (Gemini API Key varsa)
+gemini_client = None
+if GEMINI_API_KEY:
+    gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 MODELS_LIST = [
     "deepseek/deepseek-chat:free",
@@ -41,7 +48,7 @@ MODELS_LIST = [
 ]
 
 SYSTEM_PROMPT = """
-Hevora Nano. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
+Sen Hevora Nano'sun. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
 Her zaman Türkçe cevap ver.
 Kısa, doğal, profesyonel ve doğru konuş.
 """
@@ -92,6 +99,7 @@ def ask_ai(chat_id, user_message):
     last_error = None
     answer = None
 
+    # 1. ÖNCE OPENROUTER MODELLERİNİ KONTROL ET VE DENE
     for model in MODELS_LIST:
         try:
             response = requests.post(
@@ -112,15 +120,36 @@ def ask_ai(chat_id, user_message):
             if response.status_code == 200:
                 data = response.json()
                 answer = data["choices"][0]["message"]["content"]
-                break
+                break # OpenRouter'dan başarıyla yanıt alındıysa döngüden çık
             else:
                 last_error = response.text
         except Exception as e:
             last_error = str(e)
             continue
 
+    # 2. EĞER OPENROUTER'DAKİ TÜM MODELLER PATLADIYSA / YOĞUNSA -> GEMİNİ DEVREYE GİRER
+    if not answer and gemini_client:
+        try:
+            # Gemini için geçmişi ve sistem talimatını uygun formata sokuyoruz
+            gemini_contents = []
+            # Sistem promptunu ve geçmişi ekle
+            full_prompt = f"Sistem Talimatı: {SYSTEM_PROMPT}\n\n"
+            for h in history:
+                role = "Kullanıcı" if h["role"] == "user" else "Asistan"
+                full_prompt += f"{role}: {h['content']}\n"
+            full_prompt += f"Kullanıcı: {user_message}"
+
+            gemini_response = gemini_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=full_prompt
+            )
+            if gemini_response and gemini_response.text:
+                answer = gemini_response.text
+        except Exception as gemini_err:
+            last_error = f"OpenRouter Hatası: {last_error} | Gemini Hatası: {str(gemini_err)}"
+
     if not answer:
-        raise Exception(f"Tüm modeller denendi fakat yanıt alınamadı. Son hata: {last_error}")
+        raise Exception(f"Tüm OpenRouter modelleri ve yedek Gemini servisi denendi, yanıt alınamadı. Son hata: {last_error}")
 
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": answer})
