@@ -155,3 +155,24 @@ await update.message.reply_text(
     parse_mode="HTML", 
     reply_markup=reply_markup
 )
+
+from voice import text_to_speech
+import os
+
+async def button_handler(update, context):
+    query = update.callback_query
+    await query.answer() # Butonun yükleneme animasyonunu durdurur
+
+    if query.data == "tts_play":
+        # Son gönderilen mesajı veya seslendirilecek metni alıyoruz
+        text_to_speak = query.message.text or "Sesli yanıt."
+        
+        # Geçici ses dosyası oluştur
+        audio_file = await text_to_speech(text_to_speak)
+        
+        if audio_file and os.path.exists(audio_file):
+            with open(audio_file, "rb") as voice:
+                await context.bot.send_voice(chat_id=query.message.chat_id, voice=voice)
+            os.remove(audio_file)
+        else:
+            await context.bot.send_message(chat_id=query.message.chat_id, text="Ses oluşturulamadı.")
