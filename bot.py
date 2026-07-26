@@ -2,7 +2,7 @@ import json
 import os
 import threading
 import requests
-from flask import Flask
+from flask import Flask, request as flask_request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -17,25 +17,38 @@ from services.formatter import format_response
 from voice import text_to_speech
 from image import analyze_image
 from pdf import analyze_pdf
-from google import genai  # Resmi Google GenAI SDK
+from google import genai
 
-# --- FLASK MINI SUNUCU ---
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL") # Render otomatik sağlar
+
+# --- FLASK SUNUCU VE WEBHOOK ---
 web_app = Flask(__name__)
+
+# Telegram Application nesnesini global tanımlıyoruz
+telegram_app = None
 
 @web_app.route('/')
 def home():
-    return "Hevora Nano Bot aktif ve uyanık! 🚀"
+    return "Hevora Nano Bot aktif ve Webhook modunda çalışıyor! 🚀"
+
+@web_app.route(f'/{BOT_TOKEN}', methods=['POST'])
+def webhook_handler():
+    if telegram_app:
+        update_data = flask_request.get_json(force=True)
+        update = Update.de_json(update_data, telegram_app.bot)
+        # Asenkron süreci Flask içinde tetikliyoruz
+        import asyncio
+        asyncio.run(telegram_app.process_update(update))
+    return "ok", 200
 
 def run_flask():
     port = int(os.getenv("PORT", 10000))
     web_app.run(host="0.0.0.0", port=port)
 # -------------------------
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-# Google GenAI İstemcisini Başlatıyoruz (Gemini API Key varsa)
 gemini_client = None
 if GEMINI_API_KEY:
     gemini_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -48,7 +61,7 @@ MODELS_LIST = [
 ]
 
 SYSTEM_PROMPT = """
-Sen Hevora Nano'sun. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
+Hevora Nano. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
 Her zaman Türkçe cevap ver.
 Kısa, doğal, profesyonel ve doğru konuş.
 """
@@ -57,7 +70,6 @@ MEMORY_FILE = "memory.json"
 CREDITS_FILE = "credits.json"
 INITIAL_CREDITS = 50
 
-# Hafıza ve Kredi Yükleme
 if os.path.exists(MEMORY_FILE):
     with open(MEMORY_FILE, "r", encoding="utf-8") as f:
         conversation_history = json.load(f)
@@ -99,7 +111,6 @@ def ask_ai(chat_id, user_message):
     last_error = None
     answer = None
 
-    # 1. ÖNCE OPENROUTER MODELLERİNİ KONTROL ET VE DENE
     for model in MODELS_LIST:
         try:
             response = requests.post(
@@ -120,19 +131,15 @@ def ask_ai(chat_id, user_message):
             if response.status_code == 200:
                 data = response.json()
                 answer = data["choices"][0]["message"]["content"]
-                break # OpenRouter'dan başarıyla yanıt alındıysa döngüden çık
+                break
             else:
                 last_error = response.text
         except Exception as e:
             last_error = str(e)
             continue
 
-    # 2. EĞER OPENROUTER'DAKİ TÜM MODELLER PATLADIYSA / YOĞUNSA -> GEMİNİ DEVREYE GİRER
     if not answer and gemini_client:
         try:
-            # Gemini için geçmişi ve sistem talimatını uygun formata sokuyoruz
-            gemini_contents = []
-            # Sistem promptunu ve geçmişi ekle
             full_prompt = f"Sistem Talimatı: {SYSTEM_PROMPT}\n\n"
             for h in history:
                 role = "Kullanıcı" if h["role"] == "user" else "Asistan"
@@ -149,7 +156,7 @@ def ask_ai(chat_id, user_message):
             last_error = f"OpenRouter Hatası: {last_error} | Gemini Hatası: {str(gemini_err)}"
 
     if not answer:
-        raise Exception(f"Tüm OpenRouter modelleri ve yedek Gemini servisi denendi, yanıt alınamadı. Son hata: {last_error}")
+        raise Exception(f"Tüm servisler denendi, yanıt alınamadı. Son hata: {last_error}")
 
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": answer})
@@ -191,7 +198,7 @@ async def add_credit_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_credits[target_user] = INITIAL_CREDITS
         user_credits[target_user] += amount
         save_credits()
-        await update.message.reply_text(f"✅ Başarılı! {target_user} ID'li kullanıcıya {amount} kredi eklendi. Yeni bakiye: {user_credits[target_user]}")
+        await update.message.reply_text(f"✅ Başarılı! {target_user} ID'li kullanıcıya {amount} kredi eklendi.")
     except ValueError:
         await update.message.reply_text("⚠️ Miktar sayısal olmalıdır.")
 
@@ -210,15 +217,12 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
     if not check_and_use_credit(user_id):
-        await update.message.reply_text("⚠️ Krediniz tükenmiştir! Mesaj göndermek için krediye ihtiyacınız var.")
+        await update.message.reply_text("⚠️ Krediniz tükenmiştir!")
         return
 
     text = update.message.text
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id, action=ChatAction.TYPING
-    )
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     try:
         answer = ask_ai(update.effective_chat.id, text)
         parts, mode = format_response(answer)
@@ -243,7 +247,7 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         print(f"Arka plan hatası: {e}")
-        await update.message.reply_text("⚠️ Yapay zeka servislerinde geçici bir yoğunluk oluştu, lütfen tekrar deneyin.")
+        await update.message.reply_text("⚠️ Servislerde geçici bir yoğunluk oluştu, lütfen tekrar deneyin.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -302,7 +306,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     data = query.data
 
     if data == "tts_play":
@@ -314,7 +317,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(audio_file)
         else:
             await query.edit_message_text("Ses oluşturulurken hata oluştu.")
-
     elif data == "action_image":
         target_text = query.message.text or "Hevora AI"
         prompt = target_text[:100]
@@ -323,8 +325,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + requests.utils.quote(prompt)
             + "?model=flux&width=1024&height=1024&nologo=true"
         )
-        await context.bot.send_photo(chat_id=query.message.chat_id, photo=url, caption="🎨 Mesajınızdan üretilen görsel.")
-
+        await context.bot.send_photo(chat_id=query.message.chat_id, photo=url, caption="🎨 Üretilen görsel.")
     elif data == "action_pdf":
         target_text = query.message.text or "Rapor"
         pdf_filename = "hevora_rapor.txt"
@@ -334,36 +335,47 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_document(chat_id=query.message.chat_id, document=doc, filename="Hevora_Yanit.txt")
         if os.path.exists(pdf_filename):
             os.remove(pdf_filename)
-
     elif data == "feedback_true":
         await query.edit_message_reply_markup(reply_markup=None)
-        await context.bot.send_message(chat_id=query.message.chat_id, text="❤️ Geri bildiriminiz için teşekkürler! Doğru bulunduğunuz için mutlu olduk.")
-
+        await context.bot.send_message(chat_id=query.message.chat_id, text="❤️ Teşekkürler!")
     elif data == "feedback_false":
         await query.edit_message_reply_markup(reply_markup=None)
-        await context.bot.send_message(chat_id=query.message.chat_id, text="🛠 Geri bildiriminiz alındı, daha iyi yanıtlar için kendimizi geliştiriyoruz.")
+        await context.bot.send_message(chat_id=query.message.chat_id, text="🛠 Geri bildiriminiz alındı.")
 
 def main():
+    global telegram_app
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN çevre değişkeni bulunamadı!")
 
+    telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    telegram_app.add_handler(CallbackQueryHandler(button_handler))
+    telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(CommandHandler("credits", credits_command))
+    telegram_app.add_handler(CommandHandler("addcredit", add_credit_admin))
+    telegram_app.add_handler(CommandHandler("image", image))
+    telegram_app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    telegram_app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+
+    # Webhook'u Telegram'a otomatik bildir
+    if RENDER_EXTERNAL_URL:
+        webhook_url = f"{RENDER_EXTERNAL_URL.strip('/')}/{BOT_TOKEN}"
+        import asyncio
+        async def set_wh():
+            await telegram_app.bot.set_webhook(url=webhook_url)
+        asyncio.run(set_wh())
+        print(f"Webhook ayarlandı: {webhook_url}")
+
+    # Flask sunucusunu arka planda başlatıyoruz
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("credits", credits_command))
-    app.add_handler(CommandHandler("addcredit", add_credit_admin))
-    app.add_handler(CommandHandler("image", image))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-
-    print("Bot polling modunda ve web sunucu ile baslatiliyor...")
-    app.run_polling()
+    # Artık run_polling kullanılmıyor, Flask sunucusu istekleri karşılayacak
+    import time
+    while True:
+        time.sleep(1)
 
 if __name__ == '__main__':
     main()
