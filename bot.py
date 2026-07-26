@@ -118,12 +118,7 @@ from telegram.request import HTTPXRequest
 
 def main():
     # PythonAnywhere proxy ayarı
-    req = HTTPXRequest(
-        proxy_url="http://proxy.server:3128"
-    )
-
-    # Uygulamayı proxy ile başlatıyoruz
-    app = ApplicationBuilder().token(BOT_TOKEN).request(req).build()
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("image", image))
