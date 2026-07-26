@@ -1,7 +1,8 @@
 import json
 import os
-import asyncio
+import threading
 import requests
+from flask import Flask
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -13,7 +14,18 @@ from telegram.ext import (
 )
 from services.formatter import format_response
 
-# Hassas bilgileri koddan temizledik, ortama taşıyoruz
+# --- FLASK MINI SUNUCU (Render'ı uyutmama trick'i) ---
+web_app = Flask(__name__)
+
+@web_app.route('/')
+def home():
+    return "Hevora Nano Bot aktif ve uyanık! 🚀"
+
+def run_flask():
+    port = int(os.getenv("PORT", 10000))
+    web_app.run(host="0.0.0.0", port=port)
+# ----------------------------------------------------
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = os.getenv("MODEL", "qwen/qwen-2.5-72b-instruct")
@@ -113,13 +125,19 @@ def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN çevre değişkeni bulunamadı!")
 
+    # Flask'ı arka planda (ayrı bir thread'de) çalıştırıyoruz
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    # Telegram botunu başlatıyoruz
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("image", image))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    print("Bot polling modunda baslatiliyor...")
+    print("Bot polling modunda ve web sunucu ile baslatiliyor...")
     app.run_polling()
 
 if __name__ == '__main__':
