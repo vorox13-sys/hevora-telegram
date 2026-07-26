@@ -144,11 +144,14 @@ def main():
 if __name__ == '__main__':
     main()
 
-async def send_ai_response(update, context, text):
-    # Seslendirme için callback_data ekliyoruz (metni kısaltarak veya ID ile tutabiliriz)
-    keyboard = [
-        [InlineKeyboardButton("🔊 Sesli Dinle", callback_data="tts_play")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+# Mesaj gönderirken buton ekleme örneği:
+keyboard = [[InlineKeyboardButton("🔊 Sesli Dinle", callback_data="tts_play")]]
+reply_markup = InlineKeyboardMarkup(keyboard)
+
+await update.message.reply_text(
+    response_text, 
+    parse_mode="HTML", 
+    reply_markup=reply_markup
+)
