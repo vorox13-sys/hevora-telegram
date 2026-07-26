@@ -2,3 +2,5 @@ python-telegram-bot
 requests
 wcwidth
 flask
+edge-tts
+pypdf
