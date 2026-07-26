@@ -134,6 +134,10 @@ def main():
     # Telegram botunu başlatıyoruz
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    from telegram.ext import CallbackQueryHandler
+
+    app.add_handler(CallbackQueryHandler(button_handler))
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("image", image))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
