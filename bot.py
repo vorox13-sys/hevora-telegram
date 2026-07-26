@@ -109,41 +109,11 @@ def ask_ai(chat_id, user_message):
         conversation_history[chat_id] = []
 
     history = conversation_history[chat_id]
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    messages.extend(history)
-    messages.append({"role": "user", "content": user_message})
-
-    last_error = None
     answer = None
+    last_error = None
 
-    for model in MODELS_LIST:
-        try:
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 3000,
-                },
-                timeout=30,
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                answer = data["choices"][0]["message"]["content"]
-                break
-            else:
-                last_error = response.text
-        except Exception as e:
-            last_error = str(e)
-            continue
-
-    if not answer and gemini_client:
+    # 1. ÖNCE GEMİNİ DENENİR (Ana Sağlayıcı)
+    if gemini_client:
         try:
             full_prompt = f"Sistem Talimatı: {SYSTEM_PROMPT}\n\n"
             for h in history:
@@ -158,10 +128,43 @@ def ask_ai(chat_id, user_message):
             if gemini_response and gemini_response.text:
                 answer = gemini_response.text
         except Exception as gemini_err:
-            last_error = f"OpenRouter Hatası: {last_error} | Gemini Hatası: {str(gemini_err)}"
+            last_error = f"Gemini Hatası: {str(gemini_err)}"
+
+    # 2. GEMİNİ BAŞARISIZ OLURSA OPENROUTER MODELLERİ YEDEK OLARAK DEVREYE GİRER
+    if not answer and OPENROUTER_API_KEY:
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": user_message})
+
+        for model in MODELS_LIST:
+            try:
+                response = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": 2000,
+                    },
+                    timeout=45,
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    answer = data["choices"][0]["message"]["content"]
+                    break
+                else:
+                    last_error = response.text
+            except Exception as e:
+                last_error = str(e)
+                continue
 
     if not answer:
-        raise Exception(f"Tüm servisler denendi, yanıt alınamadı. Son hata: {last_error}")
+        raise Exception(f"Tüm servisler yanıt vermedi. Son hata: {last_error}")
 
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": answer})
