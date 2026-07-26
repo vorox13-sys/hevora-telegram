@@ -4,7 +4,7 @@ import base64
 
 VISION_MODELS = [
     "qwen/qwen-2.5-vl-72b-instruct",
-    "google/gemini-2.5-flash:free"
+    "meta-llama/llama-3.2-11b-vision-instruct:free"
 ]
 
 def analyze_image(image_path, user_prompt="Bu görselde ne görüyorsun? Açıkla."):
