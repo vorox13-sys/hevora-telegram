@@ -1,12 +1,11 @@
 import json
 import os
 import asyncio
-from flask import Flask, request
 import requests
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import (
-    Application,
+    ApplicationBuilder,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -14,7 +13,7 @@ from telegram.ext import (
 )
 from services.formatter import format_response
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8950788943:AAFIM6325DaYMH9gSxuLOcFOaSk63PNb9vo")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8950788943:AAFIM6325DaYMH9gSxuLOcFOaSk63PNb9vo")
 OPENROUTER_API_KEY = "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"
 MODEL = "openai/gpt-oss-20b:free"
 
@@ -74,7 +73,7 @@ def ask_ai(chat_id, user_message):
 
     conversation_history[chat_id] = history[-20:]
     with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        dump_data = json.dump(conversation_history, f, ensure_ascii=False, indent=2)
+        json.dump(conversation_history, f, ensure_ascii=False, indent=2)
 
     return answer
 
@@ -115,26 +114,16 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Hata:\n{e}")
 
-# Application & Flask kurulumu
-ptb_app = Application.builder().token(BOT_TOKEN).build()
-ptb_app.add_handler(CommandHandler("start", start))
-ptb_app.add_handler(CommandHandler("image", image))
-ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-
-app = Flask(__name__)
-
-import os
-from telegram.ext import ApplicationBuilder
-
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8950788943:AAFIM6325DaYMH9gSxuLOcFOaSk63PNb9vo")
-
 def main():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-    
-    # Handler'ların buraya ekli olmalı (örn: start, message vb.)
-    
+    # Uygulama ve komut tanımlamaları main içinde yapılıyor
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("image", image))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+
     print("Bot polling modunda baslatiliyor...")
-    application.run_polling()
+    app.run_polling()
 
 if __name__ == '__main__':
     main()
