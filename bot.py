@@ -13,9 +13,10 @@ from telegram.ext import (
 )
 from services.formatter import format_response
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8950788943:AAFIM6325DaYMH9gSxuLOcFOaSk63PNb9vo")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
-MODEL = "qwen/qwen-2.5-72b-instruct"
+# Hassas bilgileri koddan temizledik, ortama taşıyoruz
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+MODEL = os.getenv("MODEL", "qwen/qwen-2.5-72b-instruct")
 
 SYSTEM_PROMPT = """
 Sen Hevora Nano'sun.
@@ -41,7 +42,6 @@ def ask_ai(chat_id, user_message):
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
-    # Render üzerinde proxy kullanılmaz! Doğrudan istek atıyoruz.
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={
@@ -110,6 +110,9 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Hata:\n{e}")
 
 def main():
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN çevre değişkeni bulunamadı!")
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
