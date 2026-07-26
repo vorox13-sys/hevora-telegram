@@ -38,7 +38,7 @@ MODELS_LIST = [
     os.getenv("MODEL", "qwen/qwen-2.5-72b-instruct"),
     "deepseek/deepseek-chat:free",
     "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemini-2.5-flash:free"
+    "mistralai/mistral-large-2411:free"
 ]
 
 SYSTEM_PROMPT = """
