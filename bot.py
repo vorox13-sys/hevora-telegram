@@ -3,17 +3,18 @@ import os
 import threading
 import requests
 from flask import Flask
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatAction
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
 )
 from services.formatter import format_response
+from voice import text_to_speech
 
 # --- FLASK MINI SUNUCU (Render'ı uyutmama trick'i) ---
 web_app = Flask(__name__)
@@ -115,12 +116,36 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         answer = ask_ai(update.effective_chat.id, text)
         parts, mode = format_response(answer)
-        for part in parts:
+        
+        # Seslendirme butonu hazırlığı
+        keyboard = [[InlineKeyboardButton("🔊 Sesli Dinle", callback_data="tts_play")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        for i, part in enumerate(parts):
+            # Son parçaya veya tek parçaya ses butonunu ekle
+            markup = reply_markup if i == len(parts) - 1 else None
             await update.message.reply_text(
-                part, parse_mode=mode, disable_web_page_preview=True
+                part, parse_mode=mode, disable_web_page_preview=True, reply_markup=markup
             )
     except Exception as e:
         await update.message.reply_text(f"❌ Hata:\n{e}")
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "tts_play":
+        text_to_speak = query.message.text or "Sesli yanıt."
+        
+        # Geçici ses dosyası oluştur ve gönder
+        audio_file = await text_to_speech(text_to_speak)
+        
+        if audio_file and os.path.exists(audio_file):
+            with open(audio_file, "rb") as voice:
+                await context.bot.send_voice(chat_id=query.message.chat_id, voice=voice)
+            os.remove(audio_file)
+        else:
+            await context.bot.send_message(chat_id=query.message.chat_id, text="Ses oluşturulamadı.")
 
 def main():
     if not BOT_TOKEN:
@@ -134,10 +159,7 @@ def main():
     # Telegram botunu başlatıyoruz
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    from telegram.ext import CallbackQueryHandler
-
     app.add_handler(CallbackQueryHandler(button_handler))
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("image", image))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
@@ -147,36 +169,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-# Mesaj gönderirken buton ekleme örneği:
-keyboard = [[InlineKeyboardButton("🔊 Sesli Dinle", callback_data="tts_play")]]
-reply_markup = InlineKeyboardMarkup(keyboard)
-
-await update.message.reply_text(
-    response_text, 
-    parse_mode="HTML", 
-    reply_markup=reply_markup
-)
-
-from voice import text_to_speech
-import os
-
-async def button_handler(update, context):
-    query = update.callback_query
-    await query.answer() # Butonun yükleneme animasyonunu durdurur
-
-    if query.data == "tts_play":
-        # Son gönderilen mesajı veya seslendirilecek metni alıyoruz
-        text_to_speak = query.message.text or "Sesli yanıt."
-        
-        # Geçici ses dosyası oluştur
-        audio_file = await text_to_speech(text_to_speak)
-        
-        if audio_file and os.path.exists(audio_file):
-            with open(audio_file, "rb") as voice:
-                await context.bot.send_voice(chat_id=query.message.chat_id, voice=voice)
-            os.remove(audio_file)
-        else:
-            await context.bot.send_message(chat_id=query.message.chat_id, text="Ses oluşturulamadı.")
