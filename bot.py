@@ -15,6 +15,8 @@ from telegram.ext import (
 )
 from services.formatter import format_response
 from voice import text_to_speech
+from image import analyze_image
+from pdf import analyze_pdf
 
 # --- FLASK MINI SUNUCU (Render'ı uyutmama trick'i) ---
 web_app = Flask(__name__)
@@ -161,9 +163,51 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("image", image))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
     print("Bot polling modunda ve web sunucu ile baslatiliyor...")
     app.run_polling()
 
 if __name__ == '__main__':
     main()
+
+# Görsel mesajlarını yakalamak için handler:
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo = update.message.photo[-1] # En yüksek çözünürlüklü foto
+    file = await context.bot.get_file(photo.file_id)
+    file_path = "temp_image.jpg"
+    await file.download_to_drive(file_path)
+
+    caption = update.message.caption or "Bu görseli açıkla."
+    await update.message.reply_text("🔍 Görsel analiz ediliyor...")
+    
+    try:
+        result = analyze_image(file_path, caption)
+        await update.message.reply_text(result)
+    except Exception as e:
+        await update.message.reply_text("⚠️ Görsel analiz edilirken bir hata oluştu.")
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+# PDF belgelerini yakalamak için handler:
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    document = update.message.document
+    if not document.file_name.endswith('.pdf'):
+        await update.message.reply_text("Şimdilik sadece PDF dosyalarını analiz edebiliyorum.")
+        return
+
+    file = await context.bot.get_file(document.file_id)
+    file_path = "temp_doc.pdf"
+    await file.download_to_drive(file_path)
+
+    await update.message.reply_text("📄 PDF okunuyor ve analiz ediliyor...")
+    try:
+        result = analyze_pdf(file_path)
+        await update.message.reply_text(result)
+    except Exception as e:
+        await update.message.reply_text("⚠️ PDF okunurken bir hata oluştu.")
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
