@@ -32,7 +32,14 @@ def run_flask():
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-MODEL = os.getenv("MODEL", "qwen/qwen-2.5-72b-instruct")
+
+# Yoğunluk durumunda sırayla denenecek yedekli model listesi
+MODELS_LIST = [
+    os.getenv("MODEL", "qwen/qwen-2.5-72b-instruct"),
+    "deepseek/deepseek-chat:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "google/gemini-2.5-flash:free"
+]
 
 SYSTEM_PROMPT = """
 Sen Hevora Nano'sun. Hevora Labs tarafından geliştirilmiş gelişmiş bir yapay zeka asistanısın.
@@ -58,26 +65,39 @@ def ask_ai(chat_id, user_message):
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": MODEL,
-            "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 3000,
-        },
-        timeout=60,
-    )
+    last_error = None
+    answer = None
 
-    if response.status_code != 200:
-        raise Exception(response.text)
+    # Modelleri sırayla dener, biri patlarsa diğerine geçer
+    for model in MODELS_LIST:
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens": 3000,
+                },
+                timeout=30,
+            )
 
-    data = response.json()
-    answer = data["choices"][0]["message"]["content"]
+            if response.status_code == 200:
+                data = response.json()
+                answer = data["choices"][0]["message"]["content"]
+                break # Başarılı olursa döngüden çık
+            else:
+                last_error = response.text
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    if not answer:
+        raise Exception(f"Tüm modeller denendi fakat yanıt alınamadı. Son hata: {last_error}")
 
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": answer})
