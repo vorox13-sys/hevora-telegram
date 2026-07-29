@@ -25,7 +25,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# Admin ID'lerini .env üzerinden virgülle ayrılmış şekilde alıyoruz (Örn: ADMIN_IDS="123456789,987654321")
+# Admin ID'lerini .env üzerinden virgülle ayrılmış şekilde alıyoruz
 ADMIN_IDS = [int(aid.strip()) for aid in os.getenv("ADMIN_IDS", "").split(",") if aid.strip().isdigit()]
 
 MODELS_LIST = [
@@ -112,7 +112,7 @@ def ask_ai(chat_id, user_message):
     answer = None
     last_error = None
 
-    # 1. ÖNCE GEMİNİ DENENİR (Otomatik tekrar deneme mekanizmasıyla)
+    # 1. ÖNCE GEMİNİ DENENİR
     if gemini_client:
         for attempt in range(2):
             try:
@@ -178,7 +178,8 @@ def ask_ai(chat_id, user_message):
 
     return answer
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- KULLANICI KOMUTLARI (TÜRKÇE) ---
+async def baslat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id in banned_users:
         await update.message.reply_text("⛔ Bu botu kullanma yetkiniz yasaklanmıştır.")
@@ -197,13 +198,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-async def credits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def kredi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     current = user_credits.get(user_id, INITIAL_CREDITS)
     await update.message.reply_text(f"💳 Kalan Kredi Miktarınız: **{current}**", parse_mode="Markdown")
 
-# --- GEMİNİ İLE GÖRSEL ÜRETİMİ ---
-async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def oyun(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🎲 Zar At", callback_data="game_dice"), InlineKeyboardButton("🎯 Dart At", callback_data="game_dart")],
+        [InlineKeyboardButton("🪙 Yazı Tura", callback_data="game_coin"), InlineKeyboardButton("🎰 Şanslı Slot", callback_data="game_slot")],
+        [InlineKeyboardButton("🔢 Sayı Tahmin", callback_data="game_guess")]
+    ]
+    await update.message.reply_text("🎮 **Oyun Salonu**\n\nOynamak istediğin oyunu seç:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+async def gorsel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id in banned_users:
         return
@@ -213,7 +221,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     prompt = " ".join(context.args)
     if not prompt:
-        await update.message.reply_text("Kullanım:\n/image astronot kedi")
+        await update.message.reply_text("Kullanım:\n/gorsel astronot kedi")
         return
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_PHOTO)
@@ -222,31 +230,19 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not gemini_client:
             raise Exception("Gemini API anahtarı yapılandırılmamış.")
         
-        # Gemini 2.5 Flash veya Imagen model desteği ile görsel üretim promptu
         response = gemini_client.models.generate_content(
             model='gemini-2.5-flash',
             contents=f"Şu açıklama için bir görsel üretmek istiyorum, bana görseli oluşturacak en iyi ve detaylı İngilizce görsel üretim promptunu (sadece promptu) ver: {prompt}"
         )
         refined_prompt = response.text.strip() if response and response.text else prompt
 
-        # Pollinations veya Imagen fallback entegrasyonu (Gemini görsel üretimi)
         image_url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(refined_prompt)}?model=flux&width=1024&height=1024&nologo=true"
         await update.message.reply_photo(photo=image_url, caption=f"🎨 **Prompt:** {prompt}", parse_mode="Markdown")
     except Exception as e:
         print(f"Görsel üretim hatası: {e}")
         await update.message.reply_text("⚠️ Görsel üretilirken bir hata oluştu.")
 
-# --- 4-5 TANE EĞLENCELİ OYUN SİSTEMİ ---
-async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🎲 Zar At", callback_data="game_dice"), InlineKeyboardButton("🎯 Dart At", callback_data="game_dart")],
-        [InlineKeyboardButton("🪙 Yazı Tura", callback_data="game_coin"), InlineKeyboardButton("🎰 Şanslı Slot", callback_data="game_slot")],
-        [InlineKeyboardButton("🔢 Sayı Tahmin", callback_data="game_guess")]
-    ]
-    await update.message.reply_text("🎮 **Oyun Salonu**\n\nOynamak istediğin oyunu seç:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
 async def handle_games_callback(query, data):
-    chat_id = query.message.chat_id
     if data == "game_dice":
         dice = random.randint(1, 6)
         await query.message.reply_text(f"🎲 Zar attın ve gelen sayı: **{dice}**", parse_mode="Markdown")
@@ -263,10 +259,9 @@ async def handle_games_callback(query, data):
         else:
             await query.message.reply_text(f"🎰 {slots[0]} {slots[1]} {slots[2]}\n\nMaalesef kazanamadın, tekrar dene!", parse_mode="Markdown")
     elif data == "game_guess":
-        target = random.randint(1, 3)
-        await query.message.reply_text(f"🔢 1 ile 3 arasında bir sayı tuttum. Tahminini doğrudan sohbete yazabilirsin (Örn: 2)")
+        await query.message.reply_text("🔢 1 ile 3 arasında bir sayı tuttum. Tahminini doğrudan sohbete yazabilirsin (Örn: 2)")
 
-# --- ADMIN PANELİ & KOMUTLARI ---
+# --- ADMIN PANELİ & KOMUTLARI (TÜRKÇE) ---
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_admin(user_id):
@@ -276,16 +271,15 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_text = (
         "🛠 **Hevora Admin Paneli**\n\n"
         "Kullanılabilir Komutlar:\n"
-        "• `/stats` - Genel istatistikler\n"
-        "• `/broadcast <mesaj>` - Herkese duyuru gönder\n"
-        "• `/ban <user_id>` - Kullanıcıyı yasakla\n"
-        "• `/unban <user_id>` - Yasağı kaldır\n"
-        "• `/addcredit <user_id> <miktar>` - Kredi tanımla\n"
-        "• `/users` - Kullanıcı sayısını göster"
+        "• `/istatistik` - Genel istatistikler\n"
+        "• `/duyuru <mesaj>` - Herkese duyuru gönder\n"
+        "• `/yasakla <user_id>` - Kullanıcıyı yasakla\n"
+        "• `/yasak_kaldir <user_id>` - Yasağı kaldır\n"
+        "• `/kredi_ekle <user_id> <miktar>` - Kredi tanımla"
     )
     await update.message.reply_text(admin_text, parse_mode="Markdown")
 
-async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def istatistik(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Bu komutu kullanma yetkiniz yok.")
         return
@@ -293,13 +287,13 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_banned = len(banned_users)
     await update.message.reply_text(f"📊 **Bot İstatistikleri**\n\n• Toplam Kullanıcı: {total_users}\n• Yasaklı Kullanıcı: {total_banned}", parse_mode="Markdown")
 
-async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def duyuru(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Bu komutu kullanma yetkiniz yok.")
         return
     msg = " ".join(context.args)
     if not msg:
-        await update.message.reply_text("Kullanım: /broadcast <mesaj>")
+        await update.message.reply_text("Kullanım: /duyuru <mesaj>")
         return
     
     count = 0
@@ -311,12 +305,12 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             continue
     await update.message.reply_text(f"✅ Duyuru {count} kullanıcıya başarıyla gönderildi.")
 
-async def admin_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def yasakla(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Bu komutu kullanma yetkiniz yok.")
         return
     if not context.args:
-        await update.message.reply_text("Kullanım: /ban <user_id>")
+        await update.message.reply_text("Kullanım: /yasakla <user_id>")
         return
     try:
         uid = int(context.args[0])
@@ -327,12 +321,12 @@ async def admin_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("Geçersiz User ID.")
 
-async def admin_unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def yasak_kaldir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Bu komutu kullanma yetkiniz yok.")
         return
     if not context.args:
-        await update.message.reply_text("Kullanım: /unban <user_id>")
+        await update.message.reply_text("Kullanım: /yasak_kaldir <user_id>")
         return
     try:
         uid = int(context.args[0])
@@ -343,12 +337,12 @@ async def admin_unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("Geçersiz User ID.")
 
-async def add_credit_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def kredi_ekle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Bu komutu kullanma yetkiniz yok.")
         return
     if len(context.args) < 2:
-        await update.message.reply_text("Kullanım: /addcredit <user_id> <miktar>")
+        await update.message.reply_text("Kullanım: /kredi_ekle <user_id> <miktar>")
         return
     
     target_user = context.args[0]
@@ -501,17 +495,19 @@ def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     application.add_handler(CallbackQueryHandler(button_handler))
-    # Eski halleri (İngilizce) yerine bunları yaz:
-    application.add_handler(CommandHandler("baslat", start))          # Eskisi: "start" idi
-    application.add_handler(CommandHandler("kredi", credits))        # Eskisi: "credits" idi
-    application.add_handler(CommandHandler("oyun", game))            # Eskisi: "game" idi
-    application.add_handler(CommandHandler("gorsel", image))          # Eskisi: "image" idi
-    application.add_handler(CommandHandler("admin", admin_panel))    # Bu admin kalabilir veya türkçeleştirebilirsin
-    application.add_handler(CommandHandler("istatistik", stats))     # Eskisi: "stats" idi
-    application.add_handler(CommandHandler("duyuru", broadcast))     # Eskisi: "broadcast" idi
-    application.add_handler(CommandHandler("yasakla", ban))          # Eskisi: "ban" idi
-    application.add_handler(CommandHandler("yasak_kaldir", unban))   # Eskisi: "unban" idi
-    application.add_handler(CommandHandler("kredi_ekle", addcredit)) # Eskisi: "addcredit" idi
+    
+    # Türkçe Komut Eşleştirmeleri
+    application.add_handler(CommandHandler("baslat", baslat))
+    application.add_handler(CommandHandler("kredi", kredi))
+    application.add_handler(CommandHandler("oyun", oyun))
+    application.add_handler(CommandHandler("gorsel", gorsel))
+    
+    application.add_handler(CommandHandler("admin", admin_panel))
+    application.add_handler(CommandHandler("istatistik", istatistik))
+    application.add_handler(CommandHandler("duyuru", duyuru))
+    application.add_handler(CommandHandler("yasakla", yasakla))
+    application.add_handler(CommandHandler("yasak_kaldir", yasak_kaldir))
+    application.add_handler(CommandHandler("kredi_ekle", kredi_ekle))
 
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
@@ -522,4 +518,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
